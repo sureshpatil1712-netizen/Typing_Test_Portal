@@ -23,6 +23,7 @@ def login_registration_page():
     
     tab1, tab2 = st.tabs(["लॉगिन (Login)", "नवीन रजिस्ट्रेशन (Sign Up)"])
     
+    # --- टॅब 1: लॉगिन लॉजिक आणि Forget Password ---
     with tab1:
         st.subheader("तुमच्या अकाउंटमध्ये प्रवेश करा")
         login_email = st.text_input("ईमेल (Email)", key="log_email")
@@ -34,10 +35,26 @@ def login_registration_page():
                 st.session_state['logged_in'] = True
                 st.session_state['user_email'] = login_email
                 st.success("लॉगिन यशस्वी! डॅशबोर्ड लोड होत आहे...")
+                time.sleep(1)
                 st.rerun()
             except Exception as e:
                 st.error("लॉगिन अयशस्वी. कृपया ईमेल आणि पासवर्ड बरोबर असल्याची खात्री करा.")
+        
+        st.markdown("---")
+        # बदल २: Forget Password चा पर्याय
+        with st.expander("पासवर्ड विसरलात? (Forgot Password)"):
+            reset_email = st.text_input("तुमचा रजिस्टर केलेला ईमेल टाका:", key="reset_email")
+            if st.button("रीसेट लिंक पाठवा"):
+                if reset_email:
+                    try:
+                        supabase.auth.reset_password_email(reset_email)
+                        st.success("✅ पासवर्ड रीसेट लिंक तुमच्या ईमेलवर पाठवली आहे. कृपया तुमचा इनबॉक्स (किंवा स्पॅम फोल्डर) तपासा.")
+                    except Exception as e:
+                        st.error("काहीतरी चूक झाली. कृपया ईमेल बरोबर असल्याची खात्री करा.")
+                else:
+                    st.warning("कृपया आधी तुमचा ईमेल टाका.")
 
+    # --- टॅब 2: नवीन रजिस्ट्रेशन आणि Auto Login ---
     with tab2:
         st.subheader("नवीन अकाउंट तयार करा")
         st.info("🎁 नवीन रजिस्ट्रेशनवर मिळवा १० प्रॅक्टिस परिच्छेद पूर्णपणे मोफत!")
@@ -52,7 +69,13 @@ def login_registration_page():
                     "free_passages_left": 10,
                     "is_premium": False
                 }).execute()
-                st.success("रजिस्ट्रेशन यशस्वी! आता तुम्ही 'लॉगिन' टॅबवर जाऊन लॉगिन करू शकता.")
+                
+                # बदल १: Auto Login लॉजिक
+                st.session_state['logged_in'] = True
+                st.session_state['user_email'] = reg_email
+                st.success("🎉 रजिस्ट्रेशन यशस्वी! तुम्ही आता लॉग इन आहात. डॅशबोर्ड लोड होत आहे...")
+                time.sleep(1.5) # युझरला मेसेज वाचण्यासाठी थोडा वेळ
+                st.rerun()
             except Exception as e:
                 st.error(f"रजिस्ट्रेशन अयशस्वी. हा ईमेल आधीच वापरला असू शकतो किंवा पासवर्ड ६ अक्षरांपेक्षा लहान आहे.")
 
@@ -69,10 +92,14 @@ def main():
         st.sidebar.write(f"👤 {st.session_state['user_email']}")
         
         admin_email = "sureshpatil1712@gmail.com" 
+        
+        # बदल ३: Logout ला मेनूमध्ये ॲड केले
         menu = ["Dashboard", "Typing Test", "Support Form"]
         
         if st.session_state['user_email'] == admin_email:
             menu.append("Admin Panel")
+            
+        menu.append("Logout (बाहेर पडा)") # मेनूच्या शेवटी लॉगआउट
             
         choice = st.sidebar.radio("पेज निवडा:", menu)
 
@@ -93,12 +120,6 @@ def main():
                         st.warning("तुमचे मोफत परिच्छेद संपले आहेत. नवीन परिच्छेद अनलॉक करण्यासाठी अपग्रेड करा.")
             else:
                 st.warning("डेटा लोड होत आहे, कृपया रिफ्रेश करा.")
-            
-            st.markdown("---")
-            if st.button("Logout (बाहेर पडा)"):
-                st.session_state['logged_in'] = False
-                supabase.auth.sign_out()
-                st.rerun()
 
         # ----------------- ॲडमिन पॅनेल (Gemini AI सह) -----------------
         elif choice == "Admin Panel":
@@ -107,7 +128,6 @@ def main():
             if st.session_state['user_email'] == admin_email:
                 st.success("✅ Admin Access Granted!")
                 
-                # Session State for AI Text
                 if 'ai_generated_text' not in st.session_state:
                     st.session_state['ai_generated_text'] = ""
                 
@@ -134,7 +154,6 @@ def main():
                 st.subheader("२. परिच्छेद सेव्ह करा")
                 passage_title = st.text_input("परिच्छेदाचे नाव (Title)")
                 
-                # AI ने तयार केलेला मजकूर आपोआप या बॉक्समध्ये दिसेल
                 passage_content = st.text_area("परिच्छेदाचा मजकूर (Content)", value=st.session_state['ai_generated_text'], height=250)
                 
                 if st.button("Save Passage to Database", type="primary"):
@@ -145,7 +164,7 @@ def main():
                                 "title": passage_title, "content": passage_content, "word_count": word_count
                             }).execute()
                             st.success(f"🎉 परिच्छेद डेटाबेसमध्ये सेव्ह झाला! (एकूण शब्द: {word_count})")
-                            st.session_state['ai_generated_text'] = "" # सेव्ह झाल्यावर बॉक्स रिकामा करणे
+                            st.session_state['ai_generated_text'] = "" 
                         except Exception as e:
                             st.error("परिच्छेद सेव्ह करताना अडचण आली.")
                     else:
@@ -353,6 +372,23 @@ def main():
                         st.session_state['show_result'] = False
                         st.session_state['test_active'] = False
                         st.rerun()
+
+        # ----------------- लॉगआउट पेज (नवीन बदल) -----------------
+        elif choice == "Logout (बाहेर पडा)":
+            st.title("बाहेर पडत आहे... (Logging out)")
+            st.session_state['logged_in'] = False
+            try:
+                supabase.auth.sign_out()
+            except:
+                pass
+            
+            # सुरक्षिततेसाठी जुना डेटा क्लिअर करणे
+            keys_to_clear = ['test_active', 'show_result', 'selected_passage', 'exam_mode', 'start_time', 'typed_text', 'time_taken']
+            for key in keys_to_clear:
+                if key in st.session_state:
+                    del st.session_state[key]
+                    
+            st.rerun()
 
 if __name__ == '__main__':
     main()
