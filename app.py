@@ -1,5 +1,6 @@
 import streamlit as st
 import time
+import difflib
 from supabase import create_client, Client
 
 # १. पेजचे प्राथमिक सेटिंग
@@ -151,7 +152,7 @@ def main():
                     
                     st.subheader("२. परीक्षेचा मोड निवडा:")
                     exam_mode = st.radio(
-                        "तुम्हाला कोणत्या पद्धतीने टेस्ट द्यायची आहे?",
+                        "तुम्हाला कोणत्या पद्धतीने टेस्ट द्यायची approach?",
                         ["💻 Online Typing (Screen-to-Screen)", "📄 Paper Typing (Hardcopy-to-Screen)"]
                     )
                     
@@ -195,15 +196,88 @@ def main():
                     st.session_state['show_result'] = True
                     st.rerun()
 
-            # स्क्रीन ३: रिझल्ट पेज (पुढील स्टेप)
+            # स्क्रीन ३: रिझल्ट आणि मार्किंग पेज
             elif st.session_state['show_result']:
-                st.success("🎉 तुमची टेस्ट यशस्वीरित्या सबमिट झाली आहे!")
-                st.write(f"तुम्हाला लागलेला वेळ: {round(st.session_state['time_taken'], 2)} सेकंद.")
-                st.info("येथे आपण पुढील स्टेपमध्ये ०.२५ निगेटिव्ह मार्किंगसह चुका तपासण्याचे लॉजिक टाकणार आहोत.")
+                st.title("📊 तुमचा निकाल (Result)")
                 
-                if st.button("मुख्य डॅशबोर्डवर जा"):
-                    st.session_state['show_result'] = False
-                    st.rerun()
+                # --- १. डेटा घेणे आणि वेळ मोजणे ---
+                original_text = st.session_state['selected_passage']['content']
+                typed_text = st.session_state['typed_text']
+                time_taken = st.session_state['time_taken']
+                
+                # वेळ मिनिटांत काढणे (जास्तीत जास्त १० मिनिटे)
+                time_mins = min(time_taken / 60.0, 10.0)
+                if time_mins == 0: time_mins = 0.01 # शून्याने भाग जाऊ नये म्हणून
+                
+                # --- २. Gross WPM काढणे (५ अक्षरे = १ शब्द) ---
+                gross_words = len(typed_text) / 5.0
+                gross_wpm = round(gross_words / time_mins, 2)
+                
+                # --- ३. चुका शोधणे (difflib चा वापर) ---
+                original_words = original_text.split()
+                typed_words = typed_text.split()
+                
+                matcher = difflib.SequenceMatcher(None, original_words, typed_words)
+                mistakes = 0
+                error_display = [] # स्क्रीनवर चुका हायलाईट करण्यासाठी
+                
+                for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                    if tag == 'equal':
+                        error_display.append(" ".join(typed_words[j1:j2]))
+                    elif tag == 'replace': # चुकीचे स्पेलिंग
+                        mistakes += max((i2 - i1), (j2 - j1))
+                        wrong_words = " ".join(typed_words[j1:j2])
+                        error_display.append(f"<span style='color:red; text-decoration:line-through;'>{wrong_words}</span>")
+                    elif tag == 'delete': # शब्द गाळणे (Omission)
+                        mistakes += (i2 - i1)
+                        missed_words = " ".join(original_words[i1:i2])
+                        error_display.append(f"<span style='color:orange;'>[{missed_words} - सुटले]</span>")
+                    elif tag == 'insert': # जास्तीचा शब्द टाईप करणे (Addition)
+                        mistakes += (j2 - j1)
+                        extra_words = " ".join(typed_words[j1:j2])
+                        error_display.append(f"<span style='color:red; font-weight:bold;'>{extra_words}</span>")
+                        
+                # --- ४. Net WPM आणि प्राप्त गुण ---
+                net_words = max(0, gross_words - mistakes)
+                net_wpm = round(net_words / time_mins, 2)
+                marks = max(0, 20 - (mistakes * 0.25))
+                
+                # --- ५. रिझल्ट स्क्रीनवर दाखवणे ---
+                st.markdown("---")
+                
+                # नियम: ४० किंवा त्याहून अधिक चुका (Disqualification)
+                if mistakes >= 40:
+                    st.error("❌ तुम्ही या टेस्टमध्ये अपात्र (Disqualified) ठरला आहात!")
+                    st.markdown(f"**तुमच्या एकूण चुका:** <span style='color:red; font-size:24px;'>{mistakes}</span>", unsafe_allow_html=True)
+                    st.warning("४० किंवा त्याहून अधिक चुका असल्यामुळे तुम्हाला शून्य (०) गुण मिळाले आहेत. कृपया अधिक सराव करा.")
+                    
+                    if st.button("Restart (पुन्हा प्रयत्न करा)", type="primary"):
+                        st.session_state['show_result'] = False
+                        st.session_state['test_active'] = False
+                        st.rerun()
+                
+                # सामान्य निकाल (४० पेक्षा कमी चुका)
+                else:
+                    st.success("🎉 अभिनंदन! तुम्ही टेस्ट पूर्ण केली.")
+                    
+                    # ४ रकाने (Columns) बनवून आकर्षक रिझल्ट दाखवणे
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Gross Speed", f"{gross_wpm} WPM")
+                    col2.metric("Net Speed", f"{net_wpm} WPM")
+                    col3.metric("एकूण चुका", f"{mistakes}")
+                    col4.metric("प्राप्त गुण", f"{marks} / 20")
+                    
+                    st.markdown("### 🔍 चुकांचे विश्लेषण:")
+                    st.info("लाल रंग = चुकीचे/जास्तीचे शब्द | केशरी रंग = टाईप करायचे सुटलेले शब्द")
+                    
+                    # HTML वापरून रंगीत परिच्छेद दाखवणे
+                    st.markdown(f"<div style='background-color:#f0f2f6; padding:15px; border-radius:10px; line-height:1.6;'>{' '.join(error_display)}</div>", unsafe_allow_html=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("डॅशबोर्डवर परत जा", type="primary"):
+                        st.session_state['show_result'] = False
+                        st.session_state['test_active'] = False
+                        st.rerun()
 
 if __name__ == '__main__':
     main()
