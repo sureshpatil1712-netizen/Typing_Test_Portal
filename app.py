@@ -20,10 +20,8 @@ def login_registration_page():
     st.title("⌨️ 40 WPM Typing Test Portal")
     st.markdown("---")
     
-    # लॉगिन आणि रजिस्ट्रेशनसाठी दोन टॅब्स
     tab1, tab2 = st.tabs(["लॉगिन (Login)", "नवीन रजिस्ट्रेशन (Sign Up)"])
     
-    # टॅब 1: लॉगिन लॉजिक
     with tab1:
         st.subheader("तुमच्या अकाउंटमध्ये प्रवेश करा")
         login_email = st.text_input("ईमेल (Email)", key="log_email")
@@ -31,16 +29,14 @@ def login_registration_page():
         
         if st.button("लॉगिन करा", type="primary"):
             try:
-                # Supabase Auth द्वारे लॉगिन
                 response = supabase.auth.sign_in_with_password({"email": login_email, "password": login_pass})
                 st.session_state['logged_in'] = True
                 st.session_state['user_email'] = login_email
                 st.success("लॉगिन यशस्वी! डॅशबोर्ड लोड होत आहे...")
-                st.rerun() # पेज रिफ्रेश करण्यासाठी
+                st.rerun()
             except Exception as e:
                 st.error("लॉगिन अयशस्वी. कृपया ईमेल आणि पासवर्ड बरोबर असल्याची खात्री करा.")
 
-    # टॅब 2: नवीन रजिस्ट्रेशन लॉजिक
     with tab2:
         st.subheader("नवीन अकाउंट तयार करा")
         st.info("🎁 नवीन रजिस्ट्रेशनवर मिळवा १० प्रॅक्टिस परिच्छेद पूर्णपणे मोफत!")
@@ -49,16 +45,12 @@ def login_registration_page():
         
         if st.button("रजिस्ट्रेशन करा", type="primary"):
             try:
-                # १. Supabase Auth मध्ये युझर बनवणे
                 response = supabase.auth.sign_up({"email": reg_email, "password": reg_pass})
-                
-                # २. 'users_data' टेबलमध्ये मोफत १० परिच्छेदांसह डेटा सेव्ह करणे
                 supabase.table("users_data").insert({
                     "email": reg_email, 
                     "free_passages_left": 10,
                     "is_premium": False
                 }).execute()
-                
                 st.success("रजिस्ट्रेशन यशस्वी! आता तुम्ही 'लॉगिन' टॅबवर जाऊन लॉगिन करू शकता.")
             except Exception as e:
                 st.error(f"रजिस्ट्रेशन अयशस्वी. हा ईमेल आधीच वापरला असू शकतो किंवा पासवर्ड ६ अक्षरांपेक्षा लहान आहे.")
@@ -68,14 +60,12 @@ def main():
     if 'logged_in' not in st.session_state:
         st.session_state['logged_in'] = False
 
-    # जर युझर लॉगिन नसेल
     if not st.session_state['logged_in']:
         login_registration_page()
             
-    # जर युझर लॉगिन असेल
     else:
         st.sidebar.title("मेनू 📌")
-        st.sidebar.write(f"Logged in as: {st.session_state['user_email']}")
+        st.sidebar.write(f"👤 {st.session_state['user_email']}")
         
         menu = ["Dashboard", "Typing Test", "Support Form", "Admin Panel"]
         choice = st.sidebar.radio("पेज निवडा:", menu)
@@ -87,9 +77,17 @@ def main():
             user_data = supabase.table("users_data").select("*").eq("email", st.session_state['user_email']).execute()
             if len(user_data.data) > 0:
                 free_left = user_data.data[0]['free_passages_left']
-                st.info(f"**उर्वरित मोफत परिच्छेद:** {free_left} / 10")
+                is_premium = user_data.data[0]['is_premium']
+                
+                if is_premium:
+                    st.success(f"🌟 तुम्ही प्रीमियम युझर आहात! उर्वरित परिच्छेद: {free_left}")
+                else:
+                    st.info(f"**उर्वरित मोफत परिच्छेद:** {free_left} / 10")
+                    if free_left <= 0:
+                        st.warning("तुमचे मोफत परिच्छेद संपले आहेत. नवीन परिच्छेद अनलॉक करण्यासाठी अपग्रेड करा.")
             
-            if st.sidebar.button("Logout"):
+            st.markdown("---")
+            if st.button("Logout (बाहेर पडा)"):
                 st.session_state['logged_in'] = False
                 supabase.auth.sign_out()
                 st.rerun()
@@ -101,76 +99,126 @@ def main():
             
             if st.session_state['user_email'] == admin_email:
                 st.success("✅ Admin Access Granted!")
-                st.subheader("नवीन परिच्छेद सिस्टीममध्ये ॲड करा")
-                st.info("जेमिनीकडून ४५०-५०० शब्दांचा परिच्छेद तयार करून घ्या आणि खाली पेस्ट करा.")
                 
+                # परिच्छेद टाकण्याचा विभाग
+                st.subheader("१. नवीन परिच्छेद ॲड करा")
                 passage_title = st.text_input("परिच्छेदाचे नाव (उदा. Bombay HC Civil Draft 1)")
-                passage_content = st.text_area("परिच्छेदाचा मजकूर (Content)", height=250)
+                passage_content = st.text_area("परिच्छेदाचा मजकूर (Content)", height=150)
                 
                 if st.button("Save Passage", type="primary"):
                     if passage_title and passage_content:
                         word_count = len(passage_content.split())
                         try:
                             supabase.table("passages").insert({
-                                "title": passage_title,
-                                "content": passage_content,
-                                "word_count": word_count
+                                "title": passage_title, "content": passage_content, "word_count": word_count
                             }).execute()
-                            st.success(f"🎉 परिच्छेद डेटाबेसमध्ये यशस्वीरित्या सेव्ह झाला! (एकूण शब्द: {word_count})")
+                            st.success(f"🎉 परिच्छेद सेव्ह झाला! (एकूण शब्द: {word_count})")
                         except Exception as e:
                             st.error("परिच्छेद सेव्ह करताना अडचण आली.")
-                    else:
-                        st.warning("कृपया परिच्छेदाचे नाव आणि मजकूर दोन्ही भरा.")
+                
+                st.markdown("---")
+                
+                # विद्यार्थ्यांचे मेसेजेस पाहण्याचा विभाग
+                st.subheader("२. विद्यार्थ्यांच्या तक्रारी आणि फीडबॅक (Student Requests)")
+                requests_data = supabase.table("student_requests").select("*").order("created_at", desc=True).execute()
+                
+                if requests_data.data:
+                    for req in requests_data.data:
+                        with st.expander(f"{req['category']} - {req['user_email']}"):
+                            st.write(req['message'])
+                else:
+                    st.info("सध्या कोणतेही नवीन मेसेजेस नाहीत.")
+                    
             else:
                 st.error("🚫 तुम्हाला हे पेज पाहण्याचा अधिकार नाही. (Only Admin Access)")
 
-        # ----------------- टायपिंग टेस्ट (नवीन लाईव्ह टायमरसह) -----------------
+        # ----------------- सपोर्ट फॉर्म (नवीन) -----------------
+        elif choice == "Support Form":
+            st.title("मदत आणि फीडबॅक 📝")
+            st.write("वेबसाईट वापरताना काही अडचण आल्यास किंवा नवीन परिच्छेद हवा असल्यास खालील फॉर्म भरा.")
+            
+            with st.form("support_form"):
+                category = st.selectbox("विषय निवडा:", ["तांत्रिक अडचण (Technical Issue)", "नवीन परिच्छेदाची मागणी (New Passage)", "पेमेंट अडचण (Payment Issue)", "इतर (Other)"])
+                message = st.text_area("तुमचा मेसेज सविस्तर लिहा:")
+                submitted = st.form_submit_button("Submit (मेसेज पाठवा)")
+                
+                if submitted:
+                    if message:
+                        try:
+                            supabase.table("student_requests").insert({
+                                "user_email": st.session_state['user_email'],
+                                "category": category,
+                                "message": message,
+                                "status": "Pending"
+                            }).execute()
+                            st.success("तुमचा मेसेज यशस्वीरित्या पाठवला गेला आहे! ॲडमिन लवकरच यावर कार्यवाही करतील.")
+                        except Exception as e:
+                            st.error("मेसेज पाठवताना अडचण आली.")
+                    else:
+                        st.warning("कृपया मेसेज लिहा.")
+
+        # ----------------- टायपिंग टेस्ट (अपडेटेड) -----------------
         elif choice == "Typing Test":
             st.title("टायपिंग टेस्ट सुरू करा ⏱️")
             
-            # Session State मध्ये टेस्ट चालू आहे की नाही हे तपासणे
-            if 'test_active' not in st.session_state:
-                st.session_state['test_active'] = False
-            if 'show_result' not in st.session_state:
-                st.session_state['show_result'] = False
+            if 'test_active' not in st.session_state: st.session_state['test_active'] = False
+            if 'show_result' not in st.session_state: st.session_state['show_result'] = False
                 
-            # स्क्रीन १: परिच्छेद आणि मोड निवडणे
+            # स्क्रीन १: परिच्छेद निवडणे आणि क्रेडिट्स चेक करणे
             if not st.session_state['test_active'] and not st.session_state['show_result']:
-                response = supabase.table("passages").select("*").execute()
-                passages_list = response.data
                 
-                if len(passages_list) == 0:
-                    st.warning("सध्या कोणताही परिच्छेद उपलब्ध नाही. ॲडमिनने परिच्छेद टाकण्याची वाट पहा.")
-                else:
-                    st.subheader("१. सरावासाठी परिच्छेद निवडा:")
-                    passage_titles = [p['title'] for p in passages_list]
-                    selected_title = st.selectbox("खालील यादीतून परिच्छेद निवडा:", passage_titles)
+                # विद्यार्थ्यांचे क्रेडिट्स चेक करणे
+                user_data = supabase.table("users_data").select("*").eq("email", st.session_state['user_email']).execute()
+                credits_left = user_data.data[0]['free_passages_left']
+                is_premium = user_data.data[0]['is_premium']
+                
+                if credits_left <= 0 and not is_premium:
+                    st.error("🚫 तुमचे मोफत परिच्छेद संपले आहेत!")
+                    st.info("अधिक सराव करण्यासाठी फक्त ₹21 भरून नवीन 51 परिच्छेद अनलॉक करा.")
                     
-                    selected_passage = next(item for item in passages_list if item["title"] == selected_title)
-                    st.write(f"**एकूण शब्द:** {selected_passage['word_count']} | **वेळ:** १० मिनिटे")
-                    st.markdown("---")
-                    
-                    st.subheader("२. परीक्षेचा मोड निवडा:")
-                    exam_mode = st.radio(
-                        "तुम्हाला कोणत्या पद्धतीने टेस्ट द्यायची approach?",
-                        ["💻 Online Typing (Screen-to-Screen)", "📄 Paper Typing (Hardcopy-to-Screen)"]
-                    )
-                    
-                    if "Paper" in exam_mode:
-                        st.info("टीप: पेपर मोडमध्ये टेस्ट सुरू झाल्यावर स्क्रीनवर परिच्छेद दिसणार नाही. त्यामुळे खालील परिच्छेदाची प्रिंट काढा किंवा वाचण्यासाठी तयार ठेवा.")
-                        with st.expander("परिच्छेद पहा आणि कॉपी करा (Print/Copy)"):
-                            st.write(selected_passage['content'])
-                    
-                    st.markdown("---")
-                    
-                    if st.button("Start Test 🚀", type="primary", use_container_width=True):
-                        st.session_state['test_active'] = True
-                        st.session_state['start_time'] = time.time()  # वेळ सुरू
-                        st.session_state['selected_passage'] = selected_passage
-                        st.session_state['exam_mode'] = exam_mode
+                    # डमी पेमेंट बटन (भविष्यात इथे Razorpay जोडता येईल)
+                    if st.button("Unlock 51 Passages for ₹21 (Dummy Pay)"):
+                        supabase.table("users_data").update({
+                            "is_premium": True, "free_passages_left": 51
+                        }).eq("email", st.session_state['user_email']).execute()
+                        st.success("पेमेंट यशस्वी! नवीन परिच्छेद अनलॉक झाले आहेत. कृपया पेज रिफ्रेश करा.")
                         st.rerun()
+                else:
+                    response = supabase.table("passages").select("*").execute()
+                    passages_list = response.data
+                    
+                    if len(passages_list) == 0:
+                        st.warning("सध्या कोणताही परिच्छेद उपलब्ध नाही. ॲडमिनने परिच्छेद टाकण्याची वाट पहा.")
+                    else:
+                        st.subheader("१. सरावासाठी परिच्छेद निवडा:")
+                        passage_titles = [p['title'] for p in passages_list]
+                        selected_title = st.selectbox("खालील यादीतून परिच्छेद निवडा:", passage_titles)
+                        
+                        selected_passage = next(item for item in passages_list if item["title"] == selected_title)
+                        st.write(f"**एकूण शब्द:** {selected_passage['word_count']} | **वेळ:** १० मिनिटे")
+                        st.markdown("---")
+                        
+                        st.subheader("२. परीक्षेचा मोड निवडा:")
+                        exam_mode = st.radio(
+                            "तुम्हाला कोणत्या पद्धतीने टेस्ट द्यायची आहे?",
+                            ["💻 Online Typing (Screen-to-Screen)", "📄 Paper Typing (Hardcopy-to-Screen)"]
+                        )
+                        
+                        if "Paper" in exam_mode:
+                            st.info("टीप: पेपर मोडमध्ये टेस्ट सुरू झाल्यावर स्क्रीनवर परिच्छेद दिसणार नाही. त्यामुळे खालील परिच्छेदाची प्रिंट काढा किंवा वाचण्यासाठी तयार ठेवा.")
+                            with st.expander("परिच्छेद पहा आणि कॉपी करा (Print/Copy)"):
+                                st.write(selected_passage['content'])
+                        
+                        st.markdown("---")
+                        
+                        if st.button("Start Test 🚀", type="primary", use_container_width=True):
+                            st.session_state['test_active'] = True
+                            st.session_state['start_time'] = time.time()
+                            st.session_state['selected_passage'] = selected_passage
+                            st.session_state['exam_mode'] = exam_mode
+                            st.rerun()
 
-            # स्क्रीन २: प्रत्यक्ष टायपिंग टेस्ट (Active Test)
+            # स्क्रीन २: प्रत्यक्ष टायपिंग टेस्ट 
             elif st.session_state['test_active']:
                 passage = st.session_state['selected_passage']
                 mode = st.session_state['exam_mode']
@@ -190,6 +238,14 @@ def main():
                     end_time = time.time()
                     time_taken = end_time - st.session_state['start_time']
                     
+                    # --- क्रेडिट वजा करणे (१ परिच्छेद कमी करणे) ---
+                    user_data = supabase.table("users_data").select("*").eq("email", st.session_state['user_email']).execute()
+                    current_credits = user_data.data[0]['free_passages_left']
+                    
+                    if current_credits > 0:
+                        supabase.table("users_data").update({"free_passages_left": current_credits - 1}).eq("email", st.session_state['user_email']).execute()
+                    
+                    # रिझल्टसाठी डेटा सेव्ह करणे
                     st.session_state['test_active'] = False
                     st.session_state['typed_text'] = typed_text
                     st.session_state['time_taken'] = time_taken
@@ -200,52 +256,45 @@ def main():
             elif st.session_state['show_result']:
                 st.title("📊 तुमचा निकाल (Result)")
                 
-                # --- १. डेटा घेणे आणि वेळ मोजणे ---
                 original_text = st.session_state['selected_passage']['content']
                 typed_text = st.session_state['typed_text']
                 time_taken = st.session_state['time_taken']
                 
-                # वेळ मिनिटांत काढणे (जास्तीत जास्त १० मिनिटे)
                 time_mins = min(time_taken / 60.0, 10.0)
-                if time_mins == 0: time_mins = 0.01 # शून्याने भाग जाऊ नये म्हणून
+                if time_mins == 0: time_mins = 0.01 
                 
-                # --- २. Gross WPM काढणे (५ अक्षरे = १ शब्द) ---
                 gross_words = len(typed_text) / 5.0
                 gross_wpm = round(gross_words / time_mins, 2)
                 
-                # --- ३. चुका शोधणे (difflib चा वापर) ---
                 original_words = original_text.split()
                 typed_words = typed_text.split()
                 
                 matcher = difflib.SequenceMatcher(None, original_words, typed_words)
                 mistakes = 0
-                error_display = [] # स्क्रीनवर चुका हायलाईट करण्यासाठी
+                error_display = [] 
                 
                 for tag, i1, i2, j1, j2 in matcher.get_opcodes():
                     if tag == 'equal':
                         error_display.append(" ".join(typed_words[j1:j2]))
-                    elif tag == 'replace': # चुकीचे स्पेलिंग
+                    elif tag == 'replace': 
                         mistakes += max((i2 - i1), (j2 - j1))
                         wrong_words = " ".join(typed_words[j1:j2])
                         error_display.append(f"<span style='color:red; text-decoration:line-through;'>{wrong_words}</span>")
-                    elif tag == 'delete': # शब्द गाळणे (Omission)
+                    elif tag == 'delete': 
                         mistakes += (i2 - i1)
                         missed_words = " ".join(original_words[i1:i2])
                         error_display.append(f"<span style='color:orange;'>[{missed_words} - सुटले]</span>")
-                    elif tag == 'insert': # जास्तीचा शब्द टाईप करणे (Addition)
+                    elif tag == 'insert': 
                         mistakes += (j2 - j1)
                         extra_words = " ".join(typed_words[j1:j2])
                         error_display.append(f"<span style='color:red; font-weight:bold;'>{extra_words}</span>")
                         
-                # --- ४. Net WPM आणि प्राप्त गुण ---
                 net_words = max(0, gross_words - mistakes)
                 net_wpm = round(net_words / time_mins, 2)
                 marks = max(0, 20 - (mistakes * 0.25))
                 
-                # --- ५. रिझल्ट स्क्रीनवर दाखवणे ---
                 st.markdown("---")
                 
-                # नियम: ४० किंवा त्याहून अधिक चुका (Disqualification)
                 if mistakes >= 40:
                     st.error("❌ तुम्ही या टेस्टमध्ये अपात्र (Disqualified) ठरला आहात!")
                     st.markdown(f"**तुमच्या एकूण चुका:** <span style='color:red; font-size:24px;'>{mistakes}</span>", unsafe_allow_html=True)
@@ -255,12 +304,9 @@ def main():
                         st.session_state['show_result'] = False
                         st.session_state['test_active'] = False
                         st.rerun()
-                
-                # सामान्य निकाल (४० पेक्षा कमी चुका)
                 else:
                     st.success("🎉 अभिनंदन! तुम्ही टेस्ट पूर्ण केली.")
                     
-                    # ४ रकाने (Columns) बनवून आकर्षक रिझल्ट दाखवणे
                     col1, col2, col3, col4 = st.columns(4)
                     col1.metric("Gross Speed", f"{gross_wpm} WPM")
                     col2.metric("Net Speed", f"{net_wpm} WPM")
@@ -270,7 +316,6 @@ def main():
                     st.markdown("### 🔍 चुकांचे विश्लेषण:")
                     st.info("लाल रंग = चुकीचे/जास्तीचे शब्द | केशरी रंग = टाईप करायचे सुटलेले शब्द")
                     
-                    # HTML वापरून रंगीत परिच्छेद दाखवणे
                     st.markdown(f"<div style='background-color:#f0f2f6; padding:15px; border-radius:10px; line-height:1.6;'>{' '.join(error_display)}</div>", unsafe_allow_html=True)
                     
                     st.markdown("<br>", unsafe_allow_html=True)
