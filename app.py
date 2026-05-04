@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 import difflib
+import google.generativeai as genai
 from supabase import create_client, Client
 
 # १. पेजचे प्राथमिक सेटिंग
@@ -67,11 +68,9 @@ def main():
         st.sidebar.title("मेनू 📌")
         st.sidebar.write(f"👤 {st.session_state['user_email']}")
         
-        # --- स्मार्ट मेनू लॉजिक (Admin Panel लपवणे) ---
         admin_email = "sureshpatil1712@gmail.com" 
         menu = ["Dashboard", "Typing Test", "Support Form"]
         
-        # जर लॉगिन केलेला व्यक्ती तू (Admin) असशील, तरच मेनूमध्ये 'Admin Panel' ॲड होईल
         if st.session_state['user_email'] == admin_email:
             menu.append("Admin Panel")
             
@@ -101,31 +100,59 @@ def main():
                 supabase.auth.sign_out()
                 st.rerun()
 
-        # ----------------- ॲडमिन पॅनेल -----------------
+        # ----------------- ॲडमिन पॅनेल (Gemini AI सह) -----------------
         elif choice == "Admin Panel":
-            st.title("ऑथर पॅनेल 🛠️")
+            st.title("ऑथर पॅनेल 🛠️ (AI Powered)")
             
             if st.session_state['user_email'] == admin_email:
                 st.success("✅ Admin Access Granted!")
                 
-                st.subheader("१. नवीन परिच्छेद ॲड करा")
-                passage_title = st.text_input("परिच्छेदाचे नाव (उदा. Bombay HC Civil Draft 1)")
-                passage_content = st.text_area("परिच्छेदाचा मजकूर (Content)", height=150)
+                # Session State for AI Text
+                if 'ai_generated_text' not in st.session_state:
+                    st.session_state['ai_generated_text'] = ""
                 
-                if st.button("Save Passage", type="primary"):
+                st.subheader("१. Gemini AI द्वारे परिच्छेद तयार करा ✨")
+                topic = st.text_input("कोणत्या विषयावर परिच्छेद हवा आहे? (उदा. Indian Constitution, Technology, Sports)")
+                
+                if st.button("Generate AI Passage"):
+                    if topic:
+                        with st.spinner('Gemini विचार करत आहे...'):
+                            try:
+                                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                                model = genai.GenerativeModel('gemini-1.5-flash')
+                                prompt = f"Act as a professional typing test content writer. Generate a typing passage of strictly between 450 to 500 words in English about '{topic}'. Do not use bullet points, headings, or special formatting. Just provide a single, continuous, plain text paragraph."
+                                
+                                response = model.generate_content(prompt)
+                                st.session_state['ai_generated_text'] = response.text
+                                st.success("परिच्छेद तयार झाला! खालील बॉक्समध्ये तपासा आणि सेव्ह करा.")
+                            except Exception as e:
+                                st.error(f"AI एरर: {e} - कृपया Streamlit Secrets मध्ये GEMINI_API_KEY बरोबर टाकली आहे का ते तपासा.")
+                    else:
+                        st.warning("कृपया आधी विषय लिहा.")
+                
+                st.markdown("---")
+                st.subheader("२. परिच्छेद सेव्ह करा")
+                passage_title = st.text_input("परिच्छेदाचे नाव (Title)")
+                
+                # AI ने तयार केलेला मजकूर आपोआप या बॉक्समध्ये दिसेल
+                passage_content = st.text_area("परिच्छेदाचा मजकूर (Content)", value=st.session_state['ai_generated_text'], height=250)
+                
+                if st.button("Save Passage to Database", type="primary"):
                     if passage_title and passage_content:
                         word_count = len(passage_content.split())
                         try:
                             supabase.table("passages").insert({
                                 "title": passage_title, "content": passage_content, "word_count": word_count
                             }).execute()
-                            st.success(f"🎉 परिच्छेद सेव्ह झाला! (एकूण शब्द: {word_count})")
+                            st.success(f"🎉 परिच्छेद डेटाबेसमध्ये सेव्ह झाला! (एकूण शब्द: {word_count})")
+                            st.session_state['ai_generated_text'] = "" # सेव्ह झाल्यावर बॉक्स रिकामा करणे
                         except Exception as e:
                             st.error("परिच्छेद सेव्ह करताना अडचण आली.")
+                    else:
+                        st.warning("कृपया परिच्छेदाचे नाव आणि मजकूर दोन्ही भरा.")
                 
                 st.markdown("---")
-                
-                st.subheader("२. विद्यार्थ्यांच्या तक्रारी आणि फीडबॅक (Student Requests)")
+                st.subheader("३. विद्यार्थ्यांच्या तक्रारी (Student Requests)")
                 requests_data = supabase.table("student_requests").select("*").order("created_at", desc=True).execute()
                 
                 if requests_data.data:
@@ -167,12 +194,10 @@ def main():
             if 'test_active' not in st.session_state: st.session_state['test_active'] = False
             if 'show_result' not in st.session_state: st.session_state['show_result'] = False
                 
-            # स्क्रीन १: परिच्छेद निवडणे आणि क्रेडिट्स चेक करणे
             if not st.session_state['test_active'] and not st.session_state['show_result']:
                 
                 user_data = supabase.table("users_data").select("*").eq("email", st.session_state['user_email']).execute()
                 
-                # --- Safe Check ॲड केला ---
                 if len(user_data.data) > 0:
                     credits_left = user_data.data[0]['free_passages_left']
                     is_premium = user_data.data[0]['is_premium']
@@ -226,7 +251,6 @@ def main():
                             st.session_state['exam_mode'] = exam_mode
                             st.rerun()
 
-            # स्क्रीन २: प्रत्यक्ष टायपिंग टेस्ट 
             elif st.session_state['test_active']:
                 passage = st.session_state['selected_passage']
                 mode = st.session_state['exam_mode']
@@ -246,7 +270,6 @@ def main():
                     end_time = time.time()
                     time_taken = end_time - st.session_state['start_time']
                     
-                    # --- क्रेडिट वजा करणे (१ परिच्छेद कमी करणे) - Safe Check ॲड केला ---
                     user_data = supabase.table("users_data").select("*").eq("email", st.session_state['user_email']).execute()
                     
                     if len(user_data.data) > 0:
@@ -260,7 +283,6 @@ def main():
                     st.session_state['show_result'] = True
                     st.rerun()
 
-            # स्क्रीन ३: रिझल्ट आणि मार्किंग पेज
             elif st.session_state['show_result']:
                 st.title("📊 तुमचा निकाल (Result)")
                 
