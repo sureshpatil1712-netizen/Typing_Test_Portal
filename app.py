@@ -147,7 +147,7 @@ def main():
             else:
                 st.error("🚫 तुम्हाला हे पेज पाहण्याचा अधिकार नाही. (Only Admin Access)")
                 
-       elif choice == "Typing Test":
+         elif choice == "Typing Test":
             st.title("टायपिंग टेस्ट सुरू करा ⏱️")
             
             # १. डेटाबेसमधून सर्व परिच्छेद (Passages) आणणे
