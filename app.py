@@ -147,10 +147,47 @@ def main():
             else:
                 st.error("🚫 तुम्हाला हे पेज पाहण्याचा अधिकार नाही. (Only Admin Access)")
                 
-        # (पुढील पेजेसचा साचा आपण नंतर भरू)
-
-if __name__ == '__main__':
-    main()
-
+       elif choice == "Typing Test":
+            st.title("टायपिंग टेस्ट सुरू करा ⏱️")
+            
+            # १. डेटाबेसमधून सर्व परिच्छेद (Passages) आणणे
+            response = supabase.table("passages").select("*").execute()
+            passages_list = response.data
+            
+            if len(passages_list) == 0:
+                st.warning("सध्या कोणताही परिच्छेद उपलब्ध नाही. ॲडमिनने परिच्छेद टाकण्याची वाट पहा.")
+            else:
+                # २. परिच्छेद निवडण्यासाठी ड्रॉपडाऊन मेनू
+                st.subheader("१. सरावासाठी परिच्छेद निवडा:")
+                
+                # परिच्छेदांची नावे (Titles) लिस्टमध्ये घेणे
+                passage_titles = [p['title'] for p in passages_list]
+                selected_title = st.selectbox("खालील यादीतून परिच्छेद निवडा:", passage_titles)
+                
+                # निवडलेल्या परिच्छेदाचा पूर्ण डेटा शोधणे
+                selected_passage = next(item for item in passages_list if item["title"] == selected_title)
+                
+                st.write(f"**एकूण शब्द:** {selected_passage['word_count']} | **वेळ:** १० मिनिटे")
+                st.markdown("---")
+                
+                # ३. परीक्षेचा मोड निवडणे
+                st.subheader("२. परीक्षेचा मोड निवडा:")
+                exam_mode = st.radio(
+                    "तुम्हाला कोणत्या पद्धतीने टेस्ट द्यायची आहे?",
+                    ["💻 Online Typing (Screen-to-Screen)", "📄 Paper Typing (Hardcopy-to-Screen)"]
+                )
+                
+                # जर पेपर मोड असेल, तर परिच्छेद दाखवणे (प्रिंट/कॉपी करण्यासाठी)
+                if exam_mode == "📄 Paper Typing (Hardcopy-to-Screen)":
+                    st.info("टीप: पेपर मोडमध्ये टेस्ट सुरू झाल्यावर स्क्रीनवर परिच्छेद दिसणार नाही. त्यामुळे खालील परिच्छेदाची प्रिंट काढा किंवा वाचण्यासाठी तयार ठेवा.")
+                    with st.expander("परिच्छेद पहा आणि कॉपी करा (Print/Copy)"):
+                        st.write(selected_passage['content'])
+                
+                st.markdown("---")
+                
+                # ४. टेस्ट सुरू करण्याचे बटन
+                if st.button("Start Test 🚀", type="primary", use_container_width=True):
+                    # हे बटन दाबल्यावर काय होईल, याचे लॉजिक आपण पुढच्या स्टेपमध्ये लिहू
+                    st.success("येथून पुढे १० मिनिटांचा टायमर आणि टायपिंग बॉक्स सुरू होईल. (पुढील कोडींग बाकी आहे!)")
 if __name__ == '__main__':
     main()
