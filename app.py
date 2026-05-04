@@ -1,4 +1,5 @@
 import streamlit as st
+import time
 from supabase import create_client, Client
 
 # १. पेजचे प्राथमिक सेटिंग
@@ -78,48 +79,27 @@ def main():
         menu = ["Dashboard", "Typing Test", "Support Form", "Admin Panel"]
         choice = st.sidebar.radio("पेज निवडा:", menu)
 
+        # ----------------- डॅशबोर्ड -----------------
         if choice == "Dashboard":
             st.title("तुमचा डॅशबोर्ड 📊")
             
-            # डेटाबेसमधून युझरचा रेकॉर्ड आणणे (किती मोफत परिच्छेद उरले आहेत ते तपासणे)
             user_data = supabase.table("users_data").select("*").eq("email", st.session_state['user_email']).execute()
-            
             if len(user_data.data) > 0:
                 free_left = user_data.data[0]['free_passages_left']
                 st.info(f"**उर्वरित मोफत परिच्छेद:** {free_left} / 10")
             
             if st.sidebar.button("Logout"):
                 st.session_state['logged_in'] = False
-                # Supabase मधून Sign out करणे
-                supabase.auth.sign_out()
-                st.rerun()
-                
-        if choice == "Dashboard":
-            st.title("तुमचा डॅशबोर्ड 📊")
-            
-            # डेटाबेसमधून युझरचा रेकॉर्ड आणणे (किती मोफत परिच्छेद उरले आहेत ते तपासणे)
-            user_data = supabase.table("users_data").select("*").eq("email", st.session_state['user_email']).execute()
-            
-            if len(user_data.data) > 0:
-                free_left = user_data.data[0]['free_passages_left']
-                st.info(f"**उर्वरित मोफत परिच्छेद:** {free_left} / 10")
-            
-            if st.sidebar.button("Logout"):
-                st.session_state['logged_in'] = False
-                # Supabase मधून Sign out करणे
                 supabase.auth.sign_out()
                 st.rerun()
 
-        # ---------- नवीन ॲडमिन पॅनेलचा कोड येथून सुरू ----------
+        # ----------------- ॲडमिन पॅनेल -----------------
         elif choice == "Admin Panel":
             st.title("ऑथर पॅनेल 🛠️")
-            
-            # इथे तुझा स्वतःचा ईमेल टाक (ज्याने तू लॉगिन करून पॅसेज ॲड करणार आहेस)
             admin_email = "sureshpatil1712@gmail.com" 
             
             if st.session_state['user_email'] == admin_email:
                 st.success("✅ Admin Access Granted!")
-                
                 st.subheader("नवीन परिच्छेद सिस्टीममध्ये ॲड करा")
                 st.info("जेमिनीकडून ४५०-५०० शब्दांचा परिच्छेद तयार करून घ्या आणि खाली पेस्ट करा.")
                 
@@ -128,17 +108,13 @@ def main():
                 
                 if st.button("Save Passage", type="primary"):
                     if passage_title and passage_content:
-                        # शब्दांची संख्या आपोआप मोजणे
                         word_count = len(passage_content.split())
-                        
                         try:
-                            # Supabase च्या passages टेबलमध्ये डेटा सेव्ह करणे
                             supabase.table("passages").insert({
                                 "title": passage_title,
                                 "content": passage_content,
                                 "word_count": word_count
                             }).execute()
-                            
                             st.success(f"🎉 परिच्छेद डेटाबेसमध्ये यशस्वीरित्या सेव्ह झाला! (एकूण शब्द: {word_count})")
                         except Exception as e:
                             st.error("परिच्छेद सेव्ह करताना अडचण आली.")
@@ -146,48 +122,88 @@ def main():
                         st.warning("कृपया परिच्छेदाचे नाव आणि मजकूर दोन्ही भरा.")
             else:
                 st.error("🚫 तुम्हाला हे पेज पाहण्याचा अधिकार नाही. (Only Admin Access)")
-                
-         elif choice == "Typing Test":
+
+        # ----------------- टायपिंग टेस्ट (नवीन लाईव्ह टायमरसह) -----------------
+        elif choice == "Typing Test":
             st.title("टायपिंग टेस्ट सुरू करा ⏱️")
             
-            # १. डेटाबेसमधून सर्व परिच्छेद (Passages) आणणे
-            response = supabase.table("passages").select("*").execute()
-            passages_list = response.data
-            
-            if len(passages_list) == 0:
-                st.warning("सध्या कोणताही परिच्छेद उपलब्ध नाही. ॲडमिनने परिच्छेद टाकण्याची वाट पहा.")
-            else:
-                # २. परिच्छेद निवडण्यासाठी ड्रॉपडाऊन मेनू
-                st.subheader("१. सरावासाठी परिच्छेद निवडा:")
+            # Session State मध्ये टेस्ट चालू आहे की नाही हे तपासणे
+            if 'test_active' not in st.session_state:
+                st.session_state['test_active'] = False
+            if 'show_result' not in st.session_state:
+                st.session_state['show_result'] = False
                 
-                # परिच्छेदांची नावे (Titles) लिस्टमध्ये घेणे
-                passage_titles = [p['title'] for p in passages_list]
-                selected_title = st.selectbox("खालील यादीतून परिच्छेद निवडा:", passage_titles)
+            # स्क्रीन १: परिच्छेद आणि मोड निवडणे
+            if not st.session_state['test_active'] and not st.session_state['show_result']:
+                response = supabase.table("passages").select("*").execute()
+                passages_list = response.data
                 
-                # निवडलेल्या परिच्छेदाचा पूर्ण डेटा शोधणे
-                selected_passage = next(item for item in passages_list if item["title"] == selected_title)
+                if len(passages_list) == 0:
+                    st.warning("सध्या कोणताही परिच्छेद उपलब्ध नाही. ॲडमिनने परिच्छेद टाकण्याची वाट पहा.")
+                else:
+                    st.subheader("१. सरावासाठी परिच्छेद निवडा:")
+                    passage_titles = [p['title'] for p in passages_list]
+                    selected_title = st.selectbox("खालील यादीतून परिच्छेद निवडा:", passage_titles)
+                    
+                    selected_passage = next(item for item in passages_list if item["title"] == selected_title)
+                    st.write(f"**एकूण शब्द:** {selected_passage['word_count']} | **वेळ:** १० मिनिटे")
+                    st.markdown("---")
+                    
+                    st.subheader("२. परीक्षेचा मोड निवडा:")
+                    exam_mode = st.radio(
+                        "तुम्हाला कोणत्या पद्धतीने टेस्ट द्यायची आहे?",
+                        ["💻 Online Typing (Screen-to-Screen)", "📄 Paper Typing (Hardcopy-to-Screen)"]
+                    )
+                    
+                    if "Paper" in exam_mode:
+                        st.info("टीप: पेपर मोडमध्ये टेस्ट सुरू झाल्यावर स्क्रीनवर परिच्छेद दिसणार नाही. त्यामुळे खालील परिच्छेदाची प्रिंट काढा किंवा वाचण्यासाठी तयार ठेवा.")
+                        with st.expander("परिच्छेद पहा आणि कॉपी करा (Print/Copy)"):
+                            st.write(selected_passage['content'])
+                    
+                    st.markdown("---")
+                    
+                    if st.button("Start Test 🚀", type="primary", use_container_width=True):
+                        st.session_state['test_active'] = True
+                        st.session_state['start_time'] = time.time()  # वेळ सुरू
+                        st.session_state['selected_passage'] = selected_passage
+                        st.session_state['exam_mode'] = exam_mode
+                        st.rerun()
+
+            # स्क्रीन २: प्रत्यक्ष टायपिंग टेस्ट (Active Test)
+            elif st.session_state['test_active']:
+                passage = st.session_state['selected_passage']
+                mode = st.session_state['exam_mode']
                 
-                st.write(f"**एकूण शब्द:** {selected_passage['word_count']} | **वेळ:** १० मिनिटे")
-                st.markdown("---")
+                st.subheader(f"टेस्ट सुरू आहे: {passage['title']}")
+                st.warning("⏳ तुमचा वेळ सुरू झाला आहे! बरोबर १० मिनिटांनी किंवा टायपिंग पूर्ण झाल्यावर खालील 'Submit Test' बटण दाबा.")
                 
-                # ३. परीक्षेचा मोड निवडणे
-                st.subheader("२. परीक्षेचा मोड निवडा:")
-                exam_mode = st.radio(
-                    "तुम्हाला कोणत्या पद्धतीने टेस्ट द्यायची आहे?",
-                    ["💻 Online Typing (Screen-to-Screen)", "📄 Paper Typing (Hardcopy-to-Screen)"]
-                )
+                if "Online" in mode:
+                    st.info("खालील परिच्छेद पाहून टाईप करा:")
+                    st.write(passage['content'])
+                else:
+                    st.info("📄 पेपर मोड सुरू आहे. स्क्रीनवर परिच्छेद दिसणार नाही. तुमच्या जवळील प्रिंट केलेला परिच्छेद पाहून टाईप करा.")
+                    
+                typed_text = st.text_area("येथे टाईप करायला सुरुवात करा:", height=300)
                 
-                # जर पेपर मोड असेल, तर परिच्छेद दाखवणे (प्रिंट/कॉपी करण्यासाठी)
-                if exam_mode == "📄 Paper Typing (Hardcopy-to-Screen)":
-                    st.info("टीप: पेपर मोडमध्ये टेस्ट सुरू झाल्यावर स्क्रीनवर परिच्छेद दिसणार नाही. त्यामुळे खालील परिच्छेदाची प्रिंट काढा किंवा वाचण्यासाठी तयार ठेवा.")
-                    with st.expander("परिच्छेद पहा आणि कॉपी करा (Print/Copy)"):
-                        st.write(selected_passage['content'])
+                if st.button("Submit Test (पेपर जमा करा)", type="primary"):
+                    end_time = time.time()
+                    time_taken = end_time - st.session_state['start_time']
+                    
+                    st.session_state['test_active'] = False
+                    st.session_state['typed_text'] = typed_text
+                    st.session_state['time_taken'] = time_taken
+                    st.session_state['show_result'] = True
+                    st.rerun()
+
+            # स्क्रीन ३: रिझल्ट पेज (पुढील स्टेप)
+            elif st.session_state['show_result']:
+                st.success("🎉 तुमची टेस्ट यशस्वीरित्या सबमिट झाली आहे!")
+                st.write(f"तुम्हाला लागलेला वेळ: {round(st.session_state['time_taken'], 2)} सेकंद.")
+                st.info("येथे आपण पुढील स्टेपमध्ये ०.२५ निगेटिव्ह मार्किंगसह चुका तपासण्याचे लॉजिक टाकणार आहोत.")
                 
-                st.markdown("---")
-                
-                # ४. टेस्ट सुरू करण्याचे बटन
-                if st.button("Start Test 🚀", type="primary", use_container_width=True):
-                    # हे बटन दाबल्यावर काय होईल, याचे लॉजिक आपण पुढच्या स्टेपमध्ये लिहू
-                    st.success("येथून पुढे १० मिनिटांचा टायमर आणि टायपिंग बॉक्स सुरू होईल. (पुढील कोडींग बाकी आहे!)")
+                if st.button("मुख्य डॅशबोर्डवर जा"):
+                    st.session_state['show_result'] = False
+                    st.rerun()
+
 if __name__ == '__main__':
     main()
