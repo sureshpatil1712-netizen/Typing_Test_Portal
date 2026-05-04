@@ -92,6 +92,8 @@ def main():
                     st.info(f"**उर्वरित मोफत परिच्छेद:** {free_left} / 10")
                     if free_left <= 0:
                         st.warning("तुमचे मोफत परिच्छेद संपले आहेत. नवीन परिच्छेद अनलॉक करण्यासाठी अपग्रेड करा.")
+            else:
+                st.warning("डेटा लोड होत आहे, कृपया रिफ्रेश करा.")
             
             st.markdown("---")
             if st.button("Logout (बाहेर पडा)"):
@@ -106,7 +108,6 @@ def main():
             if st.session_state['user_email'] == admin_email:
                 st.success("✅ Admin Access Granted!")
                 
-                # परिच्छेद टाकण्याचा विभाग
                 st.subheader("१. नवीन परिच्छेद ॲड करा")
                 passage_title = st.text_input("परिच्छेदाचे नाव (उदा. Bombay HC Civil Draft 1)")
                 passage_content = st.text_area("परिच्छेदाचा मजकूर (Content)", height=150)
@@ -124,7 +125,6 @@ def main():
                 
                 st.markdown("---")
                 
-                # विद्यार्थ्यांचे मेसेजेस पाहण्याचा विभाग
                 st.subheader("२. विद्यार्थ्यांच्या तक्रारी आणि फीडबॅक (Student Requests)")
                 requests_data = supabase.table("student_requests").select("*").order("created_at", desc=True).execute()
                 
@@ -171,8 +171,15 @@ def main():
             if not st.session_state['test_active'] and not st.session_state['show_result']:
                 
                 user_data = supabase.table("users_data").select("*").eq("email", st.session_state['user_email']).execute()
-                credits_left = user_data.data[0]['free_passages_left']
-                is_premium = user_data.data[0]['is_premium']
+                
+                # --- Safe Check ॲड केला ---
+                if len(user_data.data) > 0:
+                    credits_left = user_data.data[0]['free_passages_left']
+                    is_premium = user_data.data[0]['is_premium']
+                else:
+                    st.error("तुमचा अकाउंट डेटा लोड करताना अडचण आली. कृपया पुन्हा लॉगिन करा किंवा डॅशबोर्डला भेट द्या.")
+                    credits_left = 0
+                    is_premium = False
                 
                 if credits_left <= 0 and not is_premium:
                     st.error("🚫 तुमचे मोफत परिच्छेद संपले आहेत!")
@@ -239,12 +246,13 @@ def main():
                     end_time = time.time()
                     time_taken = end_time - st.session_state['start_time']
                     
-                    # --- क्रेडिट वजा करणे (१ परिच्छेद कमी करणे) ---
+                    # --- क्रेडिट वजा करणे (१ परिच्छेद कमी करणे) - Safe Check ॲड केला ---
                     user_data = supabase.table("users_data").select("*").eq("email", st.session_state['user_email']).execute()
-                    current_credits = user_data.data[0]['free_passages_left']
                     
-                    if current_credits > 0:
-                        supabase.table("users_data").update({"free_passages_left": current_credits - 1}).eq("email", st.session_state['user_email']).execute()
+                    if len(user_data.data) > 0:
+                        current_credits = user_data.data[0]['free_passages_left']
+                        if current_credits > 0:
+                            supabase.table("users_data").update({"free_passages_left": current_credits - 1}).eq("email", st.session_state['user_email']).execute()
                     
                     st.session_state['test_active'] = False
                     st.session_state['typed_text'] = typed_text
