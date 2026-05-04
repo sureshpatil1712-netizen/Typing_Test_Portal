@@ -67,7 +67,14 @@ def main():
         st.sidebar.title("मेनू 📌")
         st.sidebar.write(f"👤 {st.session_state['user_email']}")
         
-        menu = ["Dashboard", "Typing Test", "Support Form", "Admin Panel"]
+        # --- स्मार्ट मेनू लॉजिक (Admin Panel लपवणे) ---
+        admin_email = "sureshpatil1712@gmail.com" 
+        menu = ["Dashboard", "Typing Test", "Support Form"]
+        
+        # जर लॉगिन केलेला व्यक्ती तू (Admin) असशील, तरच मेनूमध्ये 'Admin Panel' ॲड होईल
+        if st.session_state['user_email'] == admin_email:
+            menu.append("Admin Panel")
+            
         choice = st.sidebar.radio("पेज निवडा:", menu)
 
         # ----------------- डॅशबोर्ड -----------------
@@ -95,7 +102,6 @@ def main():
         # ----------------- ॲडमिन पॅनेल -----------------
         elif choice == "Admin Panel":
             st.title("ऑथर पॅनेल 🛠️")
-            admin_email = "sureshpatil1712@gmail.com" 
             
             if st.session_state['user_email'] == admin_email:
                 st.success("✅ Admin Access Granted!")
@@ -128,11 +134,8 @@ def main():
                             st.write(req['message'])
                 else:
                     st.info("सध्या कोणतेही नवीन मेसेजेस नाहीत.")
-                    
-            else:
-                st.error("🚫 तुम्हाला हे पेज पाहण्याचा अधिकार नाही. (Only Admin Access)")
 
-        # ----------------- सपोर्ट फॉर्म (नवीन) -----------------
+        # ----------------- सपोर्ट फॉर्म -----------------
         elif choice == "Support Form":
             st.title("मदत आणि फीडबॅक 📝")
             st.write("वेबसाईट वापरताना काही अडचण आल्यास किंवा नवीन परिच्छेद हवा असल्यास खालील फॉर्म भरा.")
@@ -157,7 +160,7 @@ def main():
                     else:
                         st.warning("कृपया मेसेज लिहा.")
 
-        # ----------------- टायपिंग टेस्ट (अपडेटेड) -----------------
+        # ----------------- टायपिंग टेस्ट -----------------
         elif choice == "Typing Test":
             st.title("टायपिंग टेस्ट सुरू करा ⏱️")
             
@@ -167,7 +170,6 @@ def main():
             # स्क्रीन १: परिच्छेद निवडणे आणि क्रेडिट्स चेक करणे
             if not st.session_state['test_active'] and not st.session_state['show_result']:
                 
-                # विद्यार्थ्यांचे क्रेडिट्स चेक करणे
                 user_data = supabase.table("users_data").select("*").eq("email", st.session_state['user_email']).execute()
                 credits_left = user_data.data[0]['free_passages_left']
                 is_premium = user_data.data[0]['is_premium']
@@ -176,7 +178,6 @@ def main():
                     st.error("🚫 तुमचे मोफत परिच्छेद संपले आहेत!")
                     st.info("अधिक सराव करण्यासाठी फक्त ₹21 भरून नवीन 51 परिच्छेद अनलॉक करा.")
                     
-                    # डमी पेमेंट बटन (भविष्यात इथे Razorpay जोडता येईल)
                     if st.button("Unlock 51 Passages for ₹21 (Dummy Pay)"):
                         supabase.table("users_data").update({
                             "is_premium": True, "free_passages_left": 51
@@ -245,7 +246,6 @@ def main():
                     if current_credits > 0:
                         supabase.table("users_data").update({"free_passages_left": current_credits - 1}).eq("email", st.session_state['user_email']).execute()
                     
-                    # रिझल्टसाठी डेटा सेव्ह करणे
                     st.session_state['test_active'] = False
                     st.session_state['typed_text'] = typed_text
                     st.session_state['time_taken'] = time_taken
